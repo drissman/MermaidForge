@@ -1,0 +1,150 @@
+// Prevents additional console window on Windows in release builds
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
+use tauri::api::dialog;
+use tauri::api::path;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ConversionResult {
+    success: bool,
+    output_path: Option<String>,
+    error: Option<String>,
+}
+
+// Commande principale de conversion Mermaid
+#[tauri::command]
+async fn convert_mermaid(
+    mermaid_code: String,
+    format: String,
+) -> Result<ConversionResult, String> {
+    println!("Conversion demandée : format={}", format);
+
+    // Valider le format
+    if format != "svg" && format != "png" {
+        return Ok(ConversionResult {
+            success: false,
+            output_path: None,
+            error: Some("Format non supporté. Utilisez 'svg' ou 'png'.".to_string()),
+        });
+    }
+
+    // Créer le dossier de sortie dans AppData
+    let app_data_dir = path::app_data_dir(&tauri::Config::default())
+        .ok_or("Impossible de trouver le dossier AppData")?;
+    
+    let output_dir = app_data_dir.join("MermaidForge").join("outputs");
+    fs::create_dir_all(&output_dir)
+        .map_err(|e| format!("Erreur création dossier : {}", e))?;
+
+    // Générer un nom de fichier unique
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("diagram_{}.{}", timestamp, format);
+    let output_path = output_dir.join(&filename);
+
+    // Appeler l'API Mermaid Ink (service gratuit)
+    let result = call_mermaid_api(&mermaid_code, &format, &output_path).await;
+
+    match result {
+        Ok(_) => Ok(ConversionResult {
+            success: true,
+            output_path: Some(output_path.to_string_lossy().to_string()),
+            error: None,
+        }),
+        Err(e) => Ok(ConversionResult {
+            success: false,
+            output_path: None,
+            error: Some(e),
+        }),
+    }
+}
+
+// Appel à l'API Mermaid Ink
+async fn call_mermaid_api(
+    mermaid_code: &str,
+    format: &str,
+    output_path: &PathBuf,
+) -> Result<(), String> {
+    // Encoder en base64
+    let encoded = base64::encode(mermaid_code);
+    
+    // URL de l'API Mermaid Ink
+    let url = match format {
+        "svg" => format!("https://mermaid.ink/svg/{}", encoded),
+        "png" => format!("https://mermaid.ink/img/{}", encoded),
+        _ => return Err("Format invalide".to_string()),
+    };
+
+    println!("Appel API : {}", url);
+
+    // Faire la requête HTTP
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Erreur requête HTTP : {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Erreur API : {}", response.status()));
+    }
+
+    // Récupérer les données
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Erreur lecture réponse : {}", e))?;
+
+    // Sauvegarder le fichier
+    fs::write(output_path, &bytes)
+        .map_err(|e| format!("Erreur écriture fichier : {}", e))?;
+
+    println!("Fichier sauvegardé : {:?}", output_path);
+    Ok(())
+}
+
+// Lire un fichier et le retourner en base64 (pour preview)
+#[tauri::command]
+async fn read_file_as_base64(path: String) -> Result<String, String> {
+    let bytes = fs::read(&path)
+        .map_err(|e| format!("Erreur lecture fichier : {}", e))?;
+    
+    Ok(base64::encode(&bytes))
+}
+
+// Ouvrir le dossier de sortie
+#[tauri::command]
+async fn open_output_folder() -> Result<(), String> {
+    let app_data_dir = path::app_data_dir(&tauri::Config::default())
+        .ok_or("Impossible de trouver le dossier AppData")?;
+    
+    let output_dir = app_data_dir.join("MermaidForge").join("outputs");
+    
+    // Créer le dossier s'il n'existe pas
+    fs::create_dir_all(&output_dir)
+        .map_err(|e| format!("Erreur création dossier : {}", e))?;
+
+    // Ouvrir dans l'explorateur Windows
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(output_dir.to_string_lossy().to_string())
+            .spawn()
+            .map_err(|e| format!("Erreur ouverture explorateur : {}", e))?;
+    }
+
+    Ok(())
+}
+
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            convert_mermaid,
+            read_file_as_base64,
+            open_output_folder
+        ])
+        .run(tauri::generate_context!())
+        .expect("Erreur lors du lancement de l'application");
+}
