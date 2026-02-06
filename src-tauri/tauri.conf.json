@@ -13,16 +13,16 @@
     "windows": [
       {
         "title": "MermaidForge",
-        "width": 1400,
-        "height": 900,
-        "minWidth": 1000,
-        "minHeight": 700,
+        "width": 1200,
+        "height": 800,
+        "minWidth": 700,
+        "minHeight": 500,
         "resizable": true,
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'"
+      "csp": null
     }
   },
   "bundle": {
@@ -34,11 +34,6 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "copyright": "Copyright © 2025 Driss NAAMANE - Orange Business",
-    "category": "Utility",
-    "shortDescription": "Convertisseur Mermaid professionnel",
-    "longDescription": "MermaidForge est un convertisseur Mermaid standalone pour Windows"
-  },
-  "plugins": {}
+    ]
+  }
 }
