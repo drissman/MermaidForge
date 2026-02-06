@@ -119,6 +119,12 @@ coverage/
 *~
 
 # ========================================
+# Release binaries (allow releases/ folder)
+# ========================================
+!releases/
+!releases/**
+
+# ========================================
 # MermaidForge specific
 # ========================================
 # User settings (ne pas commit les configs personnelles)
